@@ -99,3 +99,14 @@ def analyze(request: InterviewRequest, db: Session = Depends(get_db)):
 def get_sessions(db: Session = Depends(get_db)):
     sessions = db.query(InterviewSession).all()
     return sessions
+@router.get("/sessions/{session_id}")
+def get_session(session_id: int, db: Session = Depends(get_db)):
+    session = db.query(InterviewSession).filter(InterviewSession.id == session_id).first()
+    if not session:
+        return {"error": "Session not found"}
+    return session
+
+@router.get("/sessions/candidate/{name}")
+def get_candidate_sessions(name: str, db: Session = Depends(get_db)):
+    sessions = db.query(InterviewSession).filter(InterviewSession.candidatename == name).all()
+    return sessions
