@@ -110,3 +110,27 @@ def get_session(session_id: int, db: Session = Depends(get_db)):
 def get_candidate_sessions(name: str, db: Session = Depends(get_db)):
     sessions = db.query(InterviewSession).filter(InterviewSession.candidatename == name).all()
     return sessions
+@router.get("/candidate/{name}/score")
+def get_candidate_score(name: str, db: Session = Depends(get_db)):
+    sessions = db.query(InterviewSession).filter(InterviewSession.candidatename == name).all()
+    if not sessions:
+        return {"error": "No sessions found for this candidate"}
+    
+    avg_deception = sum(s.deception_likelihood for s in sessions) / len(sessions)
+    avg_confidence = sum(s.confidence_score for s in sessions) / len(sessions)
+    
+    if avg_deception >= 70:
+        overall_risk = "High"
+    elif avg_deception >= 40:
+        overall_risk = "Medium"
+    else:
+        overall_risk = "Low"
+    
+    return {
+        "candidatename": name,
+        "total_questions": len(sessions),
+        "avg_confidence_score": round(avg_confidence, 2),
+        "avg_deception_likelihood": round(avg_deception, 2),
+        "overall_risk": overall_risk
+    }
+
