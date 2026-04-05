@@ -15,13 +15,12 @@ class InterviewRequest(BaseModel):
     question: str
     response_text: str
 
-# ✅ NEW: AssemblyAI temporary token endpoint
 @router.get("/assemblyai-token")
 async def get_assemblyai_token():
     async with httpx.AsyncClient() as client:
         response = await client.post(
-            "https://api.assemblyai.com/v2/realtime/token",
-            headers={"authorization": ASSEMBLYAI_KEY},
+            "https://api.assemblyai.com/v3/streaming/token",
+            headers={"Authorization": ASSEMBLYAI_KEY},
             json={"expires_in": 3600}
         )
         data = response.json()
@@ -32,7 +31,7 @@ def analyze(request: InterviewRequest, db: Session = Depends(get_db)):
     text = request.response_text
     text_lower = text.lower()
 
-    filler_words = ["um", "uh", "like", "you know", "basically", "literally"]
+    filler_words = ["um", "uh", "like", "you know", "basically", "literally", "hmm", "ahh"]
     found_fillers = [word for word in filler_words if word in text_lower]
 
     hedging_words = ["i think", "i believe", "maybe", "perhaps", "i guess", "probably", "not sure", "i feel like"]
