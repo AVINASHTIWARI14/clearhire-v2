@@ -5,6 +5,7 @@ from models.schemas import InterviewSession
 from pydantic import BaseModel
 import httpx
 import os
+import re
 
 router = APIRouter()
 
@@ -31,11 +32,24 @@ def analyze(request: InterviewRequest, db: Session = Depends(get_db)):
     text = request.response_text
     text_lower = text.lower()
 
+    # ✅ FIXED: regex se proper count ho raha hai
     filler_words = ["um", "uh", "like", "you know", "basically", "literally", "hmm", "ahh"]
-    found_fillers = [word for word in filler_words if word in text_lower]
+    filler_count = 0
+    found_fillers = []
+    for word in filler_words:
+        matches = re.findall(r'\b' + re.escape(word) + r'\b', text_lower)
+        if matches:
+            filler_count += len(matches)
+            found_fillers.append(f"{word}({len(matches)})")
 
     hedging_words = ["i think", "i believe", "maybe", "perhaps", "i guess", "probably", "not sure", "i feel like"]
-    found_hedging = [word for word in hedging_words if word in text_lower]
+    hedging_count = 0
+    found_hedging = []
+    for word in hedging_words:
+        matches = re.findall(re.escape(word), text_lower)
+        if matches:
+            hedging_count += len(matches)
+            found_hedging.append(word)
 
     contradiction_pairs = [
         ("always", "never"),
@@ -57,7 +71,7 @@ def analyze(request: InterviewRequest, db: Session = Depends(get_db)):
     else:
         length_penalty = 0
 
-    total_signals = len(found_fillers) + len(found_hedging) + len(contradictions_found)
+    total_signals = filler_count + hedging_count + len(contradictions_found)
     confidence_score = max(0, 100 - (total_signals * 10) - length_penalty)
     deception_likelihood = 100 - confidence_score
 
@@ -69,10 +83,10 @@ def analyze(request: InterviewRequest, db: Session = Depends(get_db)):
         risk_level = "Low"
 
     signals = []
-    if len(found_fillers) > 0:
-        signals.append(f"{len(found_fillers)} filler word(s) detected")
-    if len(found_hedging) > 0:
-        signals.append(f"{len(found_hedging)} hedging word(s) detected")
+    if filler_count > 0:
+        signals.append(f"{filler_count} filler word(s) detected")
+    if hedging_count > 0:
+        signals.append(f"{hedging_count} hedging phrase(s) detected")
     if len(contradictions_found) > 0:
         signals.append(f"Contradiction found: {', '.join(contradictions_found)}")
     if word_count < 10:
@@ -82,8 +96,8 @@ def analyze(request: InterviewRequest, db: Session = Depends(get_db)):
         candidatename=request.candidatename,
         question=request.question,
         response_text=text,
-        filler_count=len(found_fillers),
-        hedging_count=len(found_hedging),
+        filler_count=filler_count,
+        hedging_count=hedging_count,
         contradiction_count=len(contradictions_found),
         confidence_score=confidence_score,
         deception_likelihood=deception_likelihood,
@@ -99,9 +113,9 @@ def analyze(request: InterviewRequest, db: Session = Depends(get_db)):
         "question": request.question,
         "word_count": word_count,
         "filler_words_found": found_fillers,
-        "filler_word_count": len(found_fillers),
+        "filler_word_count": filler_count,
         "hedging_phrases": found_hedging,
-        "hedging_count": len(found_hedging),
+        "hedging_count": hedging_count,
         "contradictions_found": contradictions_found,
         "contradiction_detected": len(contradictions_found) > 0,
         "contradiction_count": len(contradictions_found),
