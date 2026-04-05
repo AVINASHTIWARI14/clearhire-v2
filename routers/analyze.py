@@ -3,13 +3,29 @@ from sqlalchemy.orm import Session
 from database import get_db
 from models.schemas import InterviewSession
 from pydantic import BaseModel
+import httpx
+import os
 
 router = APIRouter()
+
+ASSEMBLYAI_KEY = os.getenv("ASSEMBLYAI_KEY")
 
 class InterviewRequest(BaseModel):
     candidatename: str = "Anonymous"
     question: str
     response_text: str
+
+# ✅ NEW: AssemblyAI temporary token endpoint
+@router.get("/assemblyai-token")
+async def get_assemblyai_token():
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            "https://api.assemblyai.com/v2/realtime/token",
+            headers={"authorization": ASSEMBLYAI_KEY},
+            json={"expires_in": 3600}
+        )
+        data = response.json()
+        return {"token": data["token"]}
 
 @router.post("/analyze")
 def analyze(request: InterviewRequest, db: Session = Depends(get_db)):
@@ -84,21 +100,24 @@ def analyze(request: InterviewRequest, db: Session = Depends(get_db)):
         "question": request.question,
         "word_count": word_count,
         "filler_words_found": found_fillers,
-        "filler_count": len(found_fillers),
-        "hedging_words_found": found_hedging,
+        "filler_word_count": len(found_fillers),
+        "hedging_phrases": found_hedging,
         "hedging_count": len(found_hedging),
         "contradictions_found": contradictions_found,
+        "contradiction_detected": len(contradictions_found) > 0,
         "contradiction_count": len(contradictions_found),
         "confidence_score": confidence_score,
         "deception_likelihood": deception_likelihood,
         "risk_level": risk_level,
-        "signals": signals
+        "signals": signals,
+        "signals_summary": ", ".join(signals) if signals else "No significant signals detected"
     }
 
 @router.get("/sessions")
 def get_sessions(db: Session = Depends(get_db)):
     sessions = db.query(InterviewSession).all()
     return sessions
+
 @router.get("/sessions/{session_id}")
 def get_session(session_id: int, db: Session = Depends(get_db)):
     session = db.query(InterviewSession).filter(InterviewSession.id == session_id).first()
@@ -110,22 +129,23 @@ def get_session(session_id: int, db: Session = Depends(get_db)):
 def get_candidate_sessions(name: str, db: Session = Depends(get_db)):
     sessions = db.query(InterviewSession).filter(InterviewSession.candidatename == name).all()
     return sessions
+
 @router.get("/candidate/{name}/score")
 def get_candidate_score(name: str, db: Session = Depends(get_db)):
     sessions = db.query(InterviewSession).filter(InterviewSession.candidatename == name).all()
     if not sessions:
         return {"error": "No sessions found for this candidate"}
-    
+
     avg_deception = sum(s.deception_likelihood for s in sessions) / len(sessions)
     avg_confidence = sum(s.confidence_score for s in sessions) / len(sessions)
-    
+
     if avg_deception >= 70:
         overall_risk = "High"
     elif avg_deception >= 40:
         overall_risk = "Medium"
     else:
         overall_risk = "Low"
-    
+
     return {
         "candidatename": name,
         "total_questions": len(sessions),
@@ -133,4 +153,3 @@ def get_candidate_score(name: str, db: Session = Depends(get_db)):
         "avg_deception_likelihood": round(avg_deception, 2),
         "overall_risk": overall_risk
     }
-
